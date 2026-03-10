@@ -24,22 +24,7 @@
 
 A Python TUI app that handles the full lifecycle of llama.cpp — clone, configure, build, install, update, and uninstall — through a cyberpunk-styled interactive interface. No memorizing cmake flags, no hunting for the right options. Jack in and pick what you want.
 
-```
-╔══════════════════════════════════════════════════════╗
-║ ▓▓ NAMAKERA ▓▓                                       ║
-╠══════════════════════════════════════════════════════╣
-║  ▓ NAMAKERA ▓                                        ║
-║  llama.cpp build manager                             ║
-║                                                      ║
-║  [ INSTALL    clone → build → install  ]             ║
-║  [ UPDATE     pull  → rebuild          ]             ║
-║  [ STATUS                              ]             ║
-║  [ SETTINGS   paths / backend          ]             ║
-║  [ UNINSTALL                           ]             ║
-║                                                      ║
-║  [ QUIT                                ]             ║
-╚══════════════════════════════════════════════════════╝
-```
+![namakera TUI preview](preview.png)
 
 The TUI steps aside during builds so you can watch live output stream in your terminal, then jacks you back in when it's done.
 
