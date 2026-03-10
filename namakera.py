@@ -83,11 +83,51 @@ def missing_deps() -> list[str]:
     return [d for d in REQUIRED_DEPS if not _which(d)]
 
 
+CUDA_SEARCH_PATHS = [
+    Path("/opt/cuda/bin/nvcc"),
+    Path("/usr/local/cuda/bin/nvcc"),
+    Path("/usr/cuda/bin/nvcc"),
+]
+
+HIP_SEARCH_PATHS = [
+    Path("/opt/rocm/bin/hipcc"),
+    Path("/usr/bin/hipcc"),
+]
+
+
+def _find_nvcc() -> Path | None:
+    # PATH first
+    r = subprocess.run(["which", "nvcc"], capture_output=True, text=True)
+    if r.returncode == 0:
+        return Path(r.stdout.strip())
+    # Also check common CUDA install dirs
+    for p in CUDA_SEARCH_PATHS:
+        if p.exists():
+            return p
+    # Check /opt/cuda*/bin/nvcc glob-style
+    for p in sorted(Path("/opt").glob("cuda*/bin/nvcc")):
+        if p.exists():
+            return p
+    return None
+
+
+def _find_hipcc() -> Path | None:
+    r = subprocess.run(["which", "hipcc"], capture_output=True, text=True)
+    if r.returncode == 0:
+        return Path(r.stdout.strip())
+    for p in HIP_SEARCH_PATHS:
+        if p.exists():
+            return p
+    return None
+
+
 def detect_backends() -> list[tuple[str, str]]:
     backends = [("CPU only  (no acceleration)", "-DGGML_NATIVE=ON")]
-    if _which("nvcc"):
-        backends.append(("CUDA      Nvidia GPU", "-DGGML_NATIVE=ON -DGGML_CUDA=ON"))
-    if _which("hipcc"):
+    nvcc = _find_nvcc()
+    if nvcc:
+        backends.append((f"CUDA      Nvidia GPU  [{nvcc}]", f"-DGGML_NATIVE=ON -DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER={nvcc}"))
+    hipcc = _find_hipcc()
+    if hipcc:
         backends.append(("HIP       AMD ROCm GPU", "-DGGML_NATIVE=ON -DGGML_HIP=ON"))
     if any(Path(p).exists() for p in ["/usr/include/vulkan/vulkan.h",
                                        "/usr/local/include/vulkan/vulkan.h"]):
