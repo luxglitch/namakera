@@ -260,6 +260,62 @@ def find_llama_binary() -> Path | None:
     return None
 
 
+def _detect_shell_configs() -> list[tuple[str, Path, str]]:
+    """Return list of (shell_name, config_path, export_line) for detected shells."""
+    entries = []
+    if Path(Path.home() / ".bashrc").exists():
+        entries.append(("bash", Path.home() / ".bashrc", "export PATH=\"{dir}:$PATH\""))
+    if Path(Path.home() / ".zshrc").exists():
+        entries.append(("zsh", Path.home() / ".zshrc", "export PATH=\"{dir}:$PATH\""))
+    fish_conf = Path.home() / ".config" / "fish" / "config.fish"
+    if fish_conf.exists():
+        entries.append(("fish", fish_conf, "fish_add_path {dir}"))
+    # Fallback: current shell
+    if not entries:
+        shell_name = Path(os.environ.get("SHELL", "/bin/bash")).name
+        rc = Path.home() / f".{shell_name}rc"
+        entries.append((shell_name, rc, "export PATH=\"{dir}:$PATH\""))
+    return entries
+
+
+def add_to_path(bin_dir: Path) -> None:
+    """Interactively offer to add bin_dir to shell config(s)."""
+    configs = _detect_shell_configs()
+    export_line_str = str(bin_dir)
+
+    print(f"\n  {A['cyan']}Detected shell configs:{A['rst']}")
+    for i, (shell, cfg, template) in enumerate(configs):
+        line = template.format(dir=bin_dir)
+        print(f"    {A['dim']}{i+1}){A['rst']} [{A['yellow']}{shell}{A['rst']}]  {cfg}")
+        print(f"       {A['dim']}adds:{A['rst']} {line}")
+
+    print()
+    ans = input(f"  {A['yellow']}Add to all detected configs? [Y/n]{A['rst']} ").strip().lower()
+    if ans in ("n", "no"):
+        print("  Skipped.")
+        return
+
+    added_any = False
+    for shell, cfg, template in configs:
+        line = template.format(dir=bin_dir)
+        # Check if already present
+        if cfg.exists() and str(bin_dir) in cfg.read_text():
+            _warn(f"{cfg.name}: already contains {bin_dir}, skipping.")
+            continue
+        try:
+            with open(cfg, "a") as f:
+                f.write(f"\n# added by namakera\n{line}\n")
+            _ok(f"Written to {cfg}")
+            added_any = True
+        except OSError as e:
+            _err(f"Could not write {cfg}: {e}")
+
+    if added_any:
+        print()
+        _ok("Done! Open a new terminal (or reload your shell) for changes to take effect.")
+        print(f"  {A['dim']}Or run now:{A['rst']}  {A['yellow']}export PATH=\"{bin_dir}:$PATH\"{A['rst']}")
+
+
 def action_status() -> None:
     header("STATUS")
     source = Path(config["source_dir"])
@@ -292,7 +348,10 @@ def action_status() -> None:
         _ok(f"Binary found: {A['cyan']}{binary}{A['rst']}{loc_note}")
         subprocess.run([str(binary), "--version"], capture_output=False)
         if not in_path:
-            _warn(f"Add {binary.parent} to your PATH to use it from the terminal.")
+            _warn(f"{binary.parent} is not in PATH.")
+            ans = input(f"  {A['yellow']}Add it to your shell config(s) now? [Y/n]{A['rst']} ").strip().lower()
+            if ans not in ("n", "no"):
+                add_to_path(binary.parent)
     else:
         _warn("No llama binary found.")
         bin_path = prefix / "bin"
