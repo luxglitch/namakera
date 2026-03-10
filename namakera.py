@@ -459,9 +459,9 @@ def _run_action(manager: ptg.WindowManager, fn) -> None:
 
 
 def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> None:
-    def _close(_):   manager -= win
+    def _close(_):   manager.remove(win)
     def _confirm(_):
-        manager -= win
+        manager.remove(win)
         if on_yes:
             on_yes()
 
@@ -485,7 +485,7 @@ def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> No
 
 
 def _alert(manager: ptg.WindowManager, title: str, lines: list[str]) -> None:
-    def _close(_): manager -= win
+    def _close(_): manager.remove(win)
 
     widgets: list = [ptg.Label(f"[cp.title]{title}"), ptg.Label("")]
     for line in lines:
@@ -509,11 +509,11 @@ def _input_form(
     inputs = [ptg.InputField(default, prompt=f"[cp.cyan]{label}: ") for label, default in fields]
 
     def _submit(_):
-        manager -= win
+        manager.remove(win)
         on_submit([inp.value for inp in inputs])
 
     def _cancel(_):
-        manager -= win
+        manager.remove(win)
 
     widgets: list = [ptg.Label(f"[cp.title]{title}"), ptg.Label("")]
     widgets.extend(inputs)
@@ -540,11 +540,11 @@ def _backend_picker(manager: ptg.WindowManager, on_select) -> None:
         def handler(_):
             config["cmake_extra"] = backends[idx][1]
             save_config()
-            manager -= win
+            manager.remove(win)
             on_select()
         return handler
 
-    def _cancel(_): manager -= win
+    def _cancel(_): manager.remove(win)
 
     buttons  = [ptg.Button(f"  {label}  ", onclick=_pick(i)) for i, (label, _) in enumerate(backends)]
     widgets  = [
