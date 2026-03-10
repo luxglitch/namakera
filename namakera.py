@@ -471,8 +471,10 @@ def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> No
             ptg.Label(""),
             ptg.Label(f"[cp.label]{body}"),
             ptg.Label(""),
-            ptg.Button("  YES  ", onclick=_confirm),
-            ptg.Button("  NO   ", onclick=_close),
+            ptg.Splitter(
+                ptg.Button("  YES  ", onclick=_confirm),
+                ptg.Button("  NO   ", onclick=_close),
+            ),
             box=ptg.boxes.DOUBLE,
             width=52,
         )
@@ -480,6 +482,7 @@ def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> No
         .center()
     )
     manager += win
+    win.select(1)  # default to NO
 
 
 def _alert(manager: ptg.WindowManager, title: str, lines: list[str]) -> None:
@@ -517,8 +520,10 @@ def _input_form(
     widgets.extend(inputs)
     widgets += [
         ptg.Label(""),
-        ptg.Button("  CONFIRM  ", onclick=_submit),
-        ptg.Button("  CANCEL   ", onclick=_cancel),
+        ptg.Splitter(
+            ptg.Button("  CONFIRM  ", onclick=_submit),
+            ptg.Button("  CANCEL   ", onclick=_cancel),
+        ),
     ]
 
     win = (
@@ -527,6 +532,7 @@ def _input_form(
         .center()
     )
     manager += win
+    win.select(len(inputs) + 1)  # default to CANCEL (skip inputs + splitter)
 
 
 def _backend_picker(manager: ptg.WindowManager, on_select) -> None:
