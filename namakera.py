@@ -311,9 +311,12 @@ def add_to_path(bin_dir: Path) -> None:
             _err(f"Could not write {cfg}: {e}")
 
     if added_any:
+        # Apply immediately to the current process so namakera benefits right away
+        os.environ["PATH"] = f"{bin_dir}:{os.environ.get('PATH', '')}"
         print()
-        _ok("Done! Open a new terminal (or reload your shell) for changes to take effect.")
-        print(f"  {A['dim']}Or run now:{A['rst']}  {A['yellow']}export PATH=\"{bin_dir}:$PATH\"{A['rst']}")
+        _ok("Done! PATH updated for this session.")
+        _ok(f"Persistent change written — open a new terminal to apply globally.")
+        print(f"  {A['dim']}Or reload now:{A['rst']}  {A['yellow']}export PATH=\"{bin_dir}:$PATH\"{A['rst']}")
 
 
 def action_status() -> None:
