@@ -393,7 +393,7 @@ def _run_action(manager: ptg.WindowManager, fn) -> None:
     input(f"  {A['pink']}// press Enter to jack back in //{A['rst']}  ")
     ptg.set_alt_buffer()
     ptg.hide_cursor()
-    manager.draw()
+    manager.compositor.redraw()
 
 
 def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> None:
