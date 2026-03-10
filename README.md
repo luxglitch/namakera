@@ -20,36 +20,44 @@
 
 ---
 
-## 🦙 What is this?
+## ▓▓ What is this?
 
-A single bash script that handles the full lifecycle of llama.cpp — clone, configure, build, install, update, and uninstall — all through an interactive menu. No memorizing cmake flags, no hunting for the right options. Just run it and pick what you want.
+A Python TUI app that handles the full lifecycle of llama.cpp — clone, configure, build, install, update, and uninstall — through a cyberpunk-styled interactive interface. No memorizing cmake flags, no hunting for the right options. Jack in and pick what you want.
 
 ```
-  ╔══════════════════════════════╗
-  ║   llama.cpp Build Manager    ║
-  ╚══════════════════════════════╝
-
-   1) Install  (clone + build + install)
-   2) Update   (pull + rebuild)
-   3) Status
-   4) Change paths / backend flags
-   5) Uninstall
-   q) Quit
+╔══════════════════════════════════════════════════════╗
+║ ▓▓ NAMAKERA ▓▓                                       ║
+╠══════════════════════════════════════════════════════╣
+║  ▓ NAMAKERA ▓                                        ║
+║  llama.cpp build manager                             ║
+║                                                      ║
+║  [ INSTALL    clone → build → install  ]             ║
+║  [ UPDATE     pull  → rebuild          ]             ║
+║  [ STATUS                              ]             ║
+║  [ SETTINGS   paths / backend          ]             ║
+║  [ UNINSTALL                           ]             ║
+║                                                      ║
+║  [ QUIT                                ]             ║
+╚══════════════════════════════════════════════════════╝
 ```
+
+The TUI steps aside during builds so you can watch live output stream in your terminal, then jacks you back in when it's done.
 
 ---
 
-## ✨ Features
+## ▓▓ Features
 
-- 🔧 **Builds from source** — always gets the latest llama.cpp
-- 🎮 **Auto-detects your GPU** — only shows backends that are actually available on your machine
-- 🔄 **One-step updates** — pulls upstream and rebuilds, optionally switching backends
-- 💾 **Remembers your settings** — config saved to `~/.config/llamacpp-manager.conf`
-- 🗑️ **Clean uninstall** — removes exactly what was installed via CMake's manifest
+- **Cyberpunk TUI** — neon cyan borders, hot pink focus highlights, acid yellow prompts
+- **Builds from source** — always gets the latest llama.cpp
+- **Auto-detects your GPU** — only shows backends available on your machine (CUDA, HIP, Vulkan, OpenBLAS)
+- **One-step updates** — confirms, pulls, and rebuilds
+- **Settings menu** — change paths and backend without reinstalling
+- **Clean uninstall** — removes exactly what CMake installed via the manifest
+- **Persistent config** — saves your choices to `~/.config/namakera.conf`
 
 ---
 
-## ⚡ Quick Start
+## ▓▓ Quick Start
 
 ```bash
 git clone https://github.com/luxglitch/namakera.git
@@ -59,65 +67,68 @@ python3 -m venv .venv
 .venv/bin/python3 namakera.py
 ```
 
-That's it. Pick **Install** and follow the prompts.
+Hit **INSTALL** and follow the prompts.
 
 ---
 
-## 📦 Dependencies
+## ▓▓ Dependencies
 
-### Required
+### Python
 
-| Tool | What it does |
-|------|-------------|
-| `git` | Clones and updates the llama.cpp repo |
-| `cmake` | Configures the build |
-| `make` | Runs the build |
-| `gcc` / `g++` | Compiles the C/C++ code |
+| Package | Purpose |
+|---------|---------|
+| `pytermgui` | Cyberpunk TUI framework |
 
-### Optional — GPU & accelerated backends
+Install it in the venv: `.venv/bin/pip install pytermgui`
 
-| Tool / Library | Backend | Good for |
+### System — Required
+
+| Tool | Purpose |
+|------|---------|
+| `git` | Clone and update the repo |
+| `cmake` | Configure the build |
+| `make` | Build system |
+| `gcc` / `g++` | C/C++ compiler |
+
+### System — Optional (GPU backends)
+
+| Tool / Library | Backend | Hardware |
 |----------------|---------|----------|
 | CUDA Toolkit (`nvcc`) | CUDA | Nvidia GPUs |
 | ROCm / HIP (`hipcc`) | HIP | AMD GPUs |
 | Vulkan headers + SDK | Vulkan | Cross-vendor GPU |
 | OpenBLAS | BLAS | Faster CPU inference |
 
-> The script auto-detects which of these are installed and only shows you what's available.
+> Namakera auto-detects which of these are present and only shows what's available in the backend picker.
 
 ---
 
-## 🏗️ Installing Dependencies
+## ▓▓ Installing System Dependencies
 
 <details>
 <summary><b>🐧 Arch Linux</b></summary>
 
-### Required
-
+**Required:**
 ```bash
 sudo pacman -S base-devel cmake git
 ```
 
-### Optional — Nvidia CUDA
-
+**Nvidia CUDA:**
 ```bash
 sudo pacman -S cuda
 ```
 
-### Optional — AMD ROCm / HIP
-
+**AMD ROCm / HIP:**
 ```bash
 sudo pacman -S rocm-hip-sdk
 ```
 
-### Optional — Vulkan
-
+**Vulkan:**
 ```bash
 sudo pacman -S vulkan-headers vulkan-icd-loader
 ```
 
-### Optional — OpenBLAS
-
+**OpenBLAS:**
 ```bash
 sudo pacman -S openblas
 ```
@@ -127,43 +138,36 @@ sudo pacman -S openblas
 <details>
 <summary><b>🟠 Ubuntu / Debian</b></summary>
 
-### Required
-
+**Required:**
 ```bash
 sudo apt update
 sudo apt install build-essential cmake git
 ```
 
-### Optional — Nvidia CUDA
+**Nvidia CUDA:**
 
 Check your driver version first:
 ```bash
 nvidia-smi
 ```
-
-Then install the toolkit:
+Then install:
 ```bash
 sudo apt install nvidia-cuda-toolkit
 ```
+> For the latest CUDA, use [Nvidia's official installer](https://developer.nvidia.com/cuda-downloads).
 
-> For the absolute latest CUDA version, use [Nvidia's official installer](https://developer.nvidia.com/cuda-downloads) instead.
-
-### Optional — AMD ROCm / HIP
-
+**AMD ROCm / HIP:**
 ```bash
 sudo apt install rocm-hip-sdk
 ```
+> Not available? See the [official ROCm install guide](https://rocm.docs.amd.com/en/latest/deploy/linux/index.html).
 
-> If that's not available for your distro version, see the [official ROCm install guide](https://rocm.docs.amd.com/en/latest/deploy/linux/index.html).
-
-### Optional — Vulkan
-
+**Vulkan:**
 ```bash
 sudo apt install libvulkan-dev vulkan-tools
 ```
 
-### Optional — OpenBLAS
-
+**OpenBLAS:**
 ```bash
 sudo apt install libopenblas-dev pkg-config
 ```
@@ -172,28 +176,28 @@ sudo apt install libopenblas-dev pkg-config
 
 ---
 
-## 🎮 Usage
+## ▓▓ Usage
 
 ### First install
 
-Run `namakera.py` and click **Install**. A form will ask for:
+Launch namakera and select **INSTALL**. A form opens asking for:
 
 - **Source directory** — where to clone llama.cpp *(default: `~/src/llama.cpp`)*
-- **Install prefix** — where to put the binaries *(default: `~/.local`)*
-- **Compute backend** — pick from whatever's detected on your system
+- **Install prefix** — where binaries go *(default: `~/.local`)*
 
-The TUI closes, shows live build output in your terminal, then returns to the menu when done. Go grab a coffee ☕ — the first build takes a few minutes.
+Then the backend picker appears — only backends detected on your system are listed. Select one, and namakera drops back to the terminal to run the full clone → configure → build → install sequence with live output. First build takes a few minutes.
 
 ### Updating
 
-Click **Update**. It:
-1. Confirms before doing anything
-2. Fetches upstream and shows current vs remote version
-3. Pulls and rebuilds
+Select **UPDATE**. A confirmation modal appears, then namakera fetches upstream, shows the current version, and rebuilds.
+
+### Settings
+
+Select **SETTINGS** to change your source directory, install prefix, or compute backend at any time without reinstalling.
 
 ### PATH setup
 
-If you install to `~/.local` (the default), make sure `~/.local/bin` is in your PATH or the binaries won't be found.
+If you install to `~/.local` (the default), make sure `~/.local/bin` is in your PATH.
 
 <details>
 <summary>How to add it</summary>
@@ -213,15 +217,15 @@ export PATH="$HOME/.local/bin:$PATH"
 fish_add_path ~/.local/bin
 ```
 
-Then open a new terminal or reload your shell.
+Open a new terminal or reload your shell after.
 
 </details>
 
 ---
 
-## ⚙️ Config file
+## ▓▓ Config
 
-Your choices are saved automatically after each install or settings change:
+Settings are written automatically to:
 
 ```
 ~/.config/namakera.conf
@@ -234,32 +238,32 @@ install_dir="/home/you/.local"
 cmake_extra="-DGGML_NATIVE=ON -DGGML_CUDA=ON"
 ```
 
-You can edit this by hand or use the **Settings** menu to update it interactively.
+Edit by hand or use the **SETTINGS** menu.
 
 ---
 
-## 🔥 Troubleshooting
+## ▓▓ Troubleshooting
 
 **Build fails with CUDA errors**
-> Make sure `nvcc` is in your PATH and the CUDA toolkit version is compatible with your driver. Run `nvidia-smi` — the top right shows the max CUDA version your driver supports.
+> Make sure `nvcc` is in your PATH and the toolkit version matches your driver. Run `nvidia-smi` — the top-right corner shows the max CUDA version your driver supports.
 
 **`llama-cli` not found after install**
-> Your install prefix's `bin/` isn't in PATH. See the [PATH setup](#-usage) section above.
+> `~/.local/bin` isn't in your PATH. See PATH setup above.
 
 **Running out of RAM during the build**
-> The build uses all your CPU threads by default. Dial it back:
+> The build uses all CPU threads by default. Limit it before launching:
 > ```bash
 > export CMAKE_BUILD_PARALLEL_LEVEL=2
-> ./llamacpp-manager.sh
+> .venv/bin/python3 namakera.py
 > ```
 
-**Permission denied on the install prefix**
-> Stick to a prefix you own like `~/.local`. Using `/usr/local` requires `sudo`, which is generally not recommended for user installs.
+**Permission denied on install prefix**
+> Use a prefix you own like `~/.local`. Avoid `/usr/local` unless you want to run with `sudo`.
 
 ---
 
 <div align="center">
 
-built with 🦙 and bash
+`// jacked in with 🦙 and pytermgui //`
 
 </div>
