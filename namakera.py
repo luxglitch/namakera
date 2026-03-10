@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
+import shutil
 from pathlib import Path
 
 import pytermgui as ptg
@@ -15,6 +15,32 @@ REPO_URL = "https://github.com/ggerganov/llama.cpp.git"
 CONFIG_FILE = Path.home() / ".config" / "namakera.conf"
 DEFAULT_SOURCE = Path.home() / "src" / "llama.cpp"
 DEFAULT_PREFIX = Path.home() / ".local"
+
+# ── Cyberpunk palette ─────────────────────────────────────────────────────────
+CP = {
+    "bg":      "#08000f",   # near-black purple
+    "bg2":     "#140028",   # slightly lighter
+    "cyan":    "#00e5ff",   # electric cyan
+    "pink":    "#ff2d78",   # hot pink
+    "yellow":  "#f5ff00",   # acid yellow
+    "green":   "#39ff14",   # neon green
+    "red":     "#ff003c",   # neon red
+    "dim":     "#4a3060",   # muted purple
+    "white":   "#e8e0ff",   # soft lavender-white
+}
+
+# ANSI shortcuts for terminal output (outside TUI)
+A = {
+    "rst":    "\033[0m",
+    "bold":   "\033[1m",
+    "cyan":   "\033[38;2;0;229;255m",
+    "pink":   "\033[38;2;255;45;120m",
+    "yellow": "\033[38;2;245;255;0m",
+    "green":  "\033[38;2;57;255;20m",
+    "red":    "\033[38;2;255;0;60m",
+    "dim":    "\033[38;2;74;48;96m",
+    "white":  "\033[38;2;232;224;255m",
+}
 
 # ── Config ────────────────────────────────────────────────────────────────────
 config: dict[str, str] = {
@@ -32,8 +58,7 @@ def load_config() -> None:
         if line.startswith("#") or "=" not in line:
             continue
         k, _, v = line.partition("=")
-        k = k.strip().lower()
-        v = v.strip().strip('"')
+        k, v = k.strip().lower(), v.strip().strip('"')
         if k in config:
             config[k] = v
 
@@ -50,146 +75,125 @@ def save_config() -> None:
 REQUIRED_DEPS = ["git", "cmake", "make", "gcc", "g++"]
 
 
-def which(cmd: str) -> bool:
+def _which(cmd: str) -> bool:
     return subprocess.run(["which", cmd], capture_output=True).returncode == 0
 
 
 def missing_deps() -> list[str]:
-    return [d for d in REQUIRED_DEPS if not which(d)]
+    return [d for d in REQUIRED_DEPS if not _which(d)]
 
 
 def detect_backends() -> list[tuple[str, str]]:
-    """Return list of (label, cmake_flags) for available backends."""
-    backends = [("CPU only (no acceleration)", "-DGGML_NATIVE=ON")]
-    if which("nvcc"):
-        backends.append(("CUDA  — Nvidia GPU", "-DGGML_NATIVE=ON -DGGML_CUDA=ON"))
-    if which("hipcc"):
-        backends.append(("HIP   — AMD ROCm GPU", "-DGGML_NATIVE=ON -DGGML_HIP=ON"))
-    vulkan_paths = ["/usr/include/vulkan/vulkan.h", "/usr/local/include/vulkan/vulkan.h"]
-    if any(Path(p).exists() for p in vulkan_paths):
-        backends.append(("Vulkan — cross-vendor GPU", "-DGGML_NATIVE=ON -DGGML_VULKAN=ON"))
+    backends = [("CPU only  (no acceleration)", "-DGGML_NATIVE=ON")]
+    if _which("nvcc"):
+        backends.append(("CUDA      Nvidia GPU", "-DGGML_NATIVE=ON -DGGML_CUDA=ON"))
+    if _which("hipcc"):
+        backends.append(("HIP       AMD ROCm GPU", "-DGGML_NATIVE=ON -DGGML_HIP=ON"))
+    if any(Path(p).exists() for p in ["/usr/include/vulkan/vulkan.h",
+                                       "/usr/local/include/vulkan/vulkan.h"]):
+        backends.append(("Vulkan    cross-vendor GPU", "-DGGML_NATIVE=ON -DGGML_VULKAN=ON"))
     try:
         r = subprocess.run(["pkg-config", "--exists", "openblas"], capture_output=True)
         if r.returncode == 0:
-            backends.append(("OpenBLAS — CPU BLAS", "-DGGML_NATIVE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS"))
+            backends.append(("OpenBLAS  CPU BLAS", "-DGGML_NATIVE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS"))
     except FileNotFoundError:
         pass
     return backends
 
 
-# ── Terminal helpers (run outside TUI) ────────────────────────────────────────
-def run_outside_tui(fn):
-    """Decorator: exits alt-buffer, runs fn(), waits for Enter, re-enters."""
-    def wrapper(manager: ptg.WindowManager, *args, **kwargs):
-        ptg.unset_alt_buffer()
-        ptg.show_cursor()
-        print()
-        try:
-            fn(*args, **kwargs)
-        except KeyboardInterrupt:
-            print("\n[interrupted]")
-        print()
-        input("  Press Enter to return to menu...")
-        ptg.set_alt_buffer()
-        ptg.hide_cursor()
-        manager.draw()
-    return wrapper
-
-
+# ── Terminal output helpers ────────────────────────────────────────────────────
 def shell(cmd: list[str], cwd: str | None = None) -> int:
-    """Run a command with live output. Returns exit code."""
-    print(f"\n  \033[36m$ {' '.join(cmd)}\033[0m")
-    result = subprocess.run(cmd, cwd=cwd)
-    return result.returncode
+    c, r = A["cyan"], A["rst"]
+    print(f"\n  {c}$ {' '.join(cmd)}{r}")
+    return subprocess.run(cmd, cwd=cwd).returncode
 
 
 def header(text: str) -> None:
     cols = os.get_terminal_size().columns
-    print(f"\n\033[1;36m{'─' * cols}\033[0m")
-    print(f"\033[1;97m  {text}\033[0m")
-    print(f"\033[1;36m{'─' * cols}\033[0m")
+    p, c, r = A["pink"], A["cyan"], A["rst"]
+    bar = f"{p}{'▓' * 4}{r} {A['white']}{A['bold']}{text}{r} {p}{'▓' * 4}{r}"
+    line = f"{c}{'═' * cols}{r}"
+    print(f"\n{line}\n  {bar}\n{line}")
 
 
-# ── Core actions (run in plain terminal) ─────────────────────────────────────
+def _ok(msg: str)   -> None: print(f"  {A['green']}✔ {A['white']}{msg}{A['rst']}")
+def _warn(msg: str) -> None: print(f"  {A['yellow']}! {A['white']}{msg}{A['rst']}")
+def _err(msg: str)  -> None: print(f"  {A['red']}✘ {A['white']}{msg}{A['rst']}")
+
+
+# ── Core actions ──────────────────────────────────────────────────────────────
 def action_install() -> None:
-    header("Install llama.cpp")
+    header("INSTALL  //  llama.cpp")
     source = Path(config["source_dir"])
     prefix = Path(config["install_dir"])
 
     missing = missing_deps()
     if missing:
-        print(f"\n  \033[31m✘ Missing required tools: {', '.join(missing)}\033[0m")
+        _err(f"Missing required tools: {', '.join(missing)}")
         print("  Install them and try again.")
         return
 
     if source.is_dir() and (source / ".git").exists():
-        print(f"  \033[33m! Source already exists at {source}\033[0m")
+        _warn(f"Source already exists at {source}")
         print("  Skipping clone — proceeding to build.")
     else:
-        print(f"  Cloning into {source} …")
+        print(f"  {A['cyan']}Cloning into {source} …{A['rst']}")
         if shell(["git", "clone", REPO_URL, str(source)]) != 0:
-            print("\033[31m  Clone failed.\033[0m")
+            _err("Clone failed.")
             return
 
     _build_and_install(source, prefix)
 
 
 def action_update() -> None:
-    header("Update llama.cpp")
+    header("UPDATE  //  llama.cpp")
     source = Path(config["source_dir"])
     prefix = Path(config["install_dir"])
 
     if not (source / ".git").exists():
-        print(f"  \033[31m✘ Source not found at {source}\033[0m")
+        _err(f"Source not found at {source}")
         print("  Run Install first.")
         return
 
-    print("  Fetching upstream…")
+    print(f"  {A['cyan']}Fetching upstream…{A['rst']}")
     shell(["git", "fetch", "origin"], cwd=str(source))
 
-    local = subprocess.run(
-        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=str(source)
-    ).stdout.strip()
-    remote = subprocess.run(
-        ["git", "rev-parse", "@{u}"], capture_output=True, text=True, cwd=str(source)
-    ).stdout.strip()
+    local  = subprocess.run(["git", "rev-parse", "HEAD"],  capture_output=True, text=True, cwd=str(source)).stdout.strip()
+    remote = subprocess.run(["git", "rev-parse", "@{u}"],  capture_output=True, text=True, cwd=str(source)).stdout.strip()
 
     if local == remote:
-        print("\n  \033[32m✔ Already up to date.\033[0m")
+        _ok("Already up to date.")
         return
 
-    tag = subprocess.run(
-        ["git", "describe", "--tags", "--always"],
-        capture_output=True, text=True, cwd=str(source)
-    ).stdout.strip()
-    print(f"  Current: {tag}")
-    print(f"  Update available — pulling…")
+    tag = subprocess.run(["git", "describe", "--tags", "--always"],
+                         capture_output=True, text=True, cwd=str(source)).stdout.strip()
+    print(f"  {A['dim']}current :{A['rst']} {tag}")
+    print(f"  {A['cyan']}Update available — pulling…{A['rst']}")
     shell(["git", "pull", "--ff-only"], cwd=str(source))
     _build_and_install(source, prefix)
 
 
 def action_uninstall() -> None:
-    header("Uninstall llama.cpp")
-    source = Path(config["source_dir"])
+    header("UNINSTALL  //  llama.cpp")
+    source   = Path(config["source_dir"])
     manifest = source / "build" / "install_manifest.txt"
 
     if not manifest.exists():
-        print(f"  \033[33m! No install manifest found at {manifest}\033[0m")
-        ans = input("  Remove source directory anyway? [y/N] ").strip().lower()
+        _warn(f"No install manifest found at {manifest}")
+        ans = input(f"  {A['yellow']}Remove source directory anyway? [y/N]{A['rst']} ").strip().lower()
         if ans == "y":
-            import shutil
             shutil.rmtree(source, ignore_errors=True)
-            print(f"  \033[32m✔ Removed {source}\033[0m")
+            _ok(f"Removed {source}")
         return
 
     files = manifest.read_text().splitlines()
-    print(f"\n  Files to remove ({len(files)} items):")
+    print(f"\n  {A['cyan']}Files to remove ({len(files)} items):{A['rst']}")
     for f in files[:10]:
-        print(f"    {f}")
+        print(f"    {A['dim']}{f}{A['rst']}")
     if len(files) > 10:
-        print(f"    … and {len(files) - 10} more")
+        print(f"    {A['dim']}… and {len(files) - 10} more{A['rst']}")
 
-    ans = input("\n  Confirm removal? [y/N] ").strip().lower()
+    ans = input(f"\n  {A['yellow']}Confirm removal? [y/N]{A['rst']} ").strip().lower()
     if ans != "y":
         print("  Cancelled.")
         return
@@ -198,66 +202,61 @@ def action_uninstall() -> None:
         p = Path(f)
         if p.exists():
             p.unlink()
-            print(f"  removed {p}")
+            print(f"  {A['dim']}removed {p}{A['rst']}")
 
-    ans2 = input(f"\n  Also remove source directory {source}? [y/N] ").strip().lower()
+    ans2 = input(f"\n  {A['yellow']}Also remove source directory {source}? [y/N]{A['rst']} ").strip().lower()
     if ans2 == "y":
-        import shutil
         shutil.rmtree(source, ignore_errors=True)
-        print(f"  \033[32m✔ Removed {source}\033[0m")
+        _ok(f"Removed {source}")
 
     CONFIG_FILE.unlink(missing_ok=True)
-    print("\n  \033[32m✔ Uninstall complete.\033[0m")
+    _ok("Uninstall complete.")
 
 
 def action_status() -> None:
-    header("Status")
+    header("STATUS")
     source = Path(config["source_dir"])
     prefix = Path(config["install_dir"])
 
-    print(f"  Source dir   : {source}")
-    print(f"  Install dir  : {prefix}")
-    print(f"  CMake flags  : {config['cmake_extra']}")
+    c, w, d, r = A["cyan"], A["white"], A["dim"], A["rst"]
+    print(f"  {d}source dir  :{r} {w}{source}{r}")
+    print(f"  {d}install dir :{r} {w}{prefix}{r}")
+    print(f"  {d}cmake flags :{r} {A['yellow']}{config['cmake_extra']}{r}")
     print()
 
     if (source / ".git").exists():
-        tag = subprocess.run(
-            ["git", "describe", "--tags", "--always"],
-            capture_output=True, text=True, cwd=str(source)
-        ).stdout.strip()
-        print(f"  \033[32m✔ Source cloned — version: {tag}\033[0m")
-        behind = subprocess.run(
-            ["git", "rev-list", "HEAD..@{u}", "--count"],
-            capture_output=True, text=True, cwd=str(source)
-        ).stdout.strip()
+        tag = subprocess.run(["git", "describe", "--tags", "--always"],
+                             capture_output=True, text=True, cwd=str(source)).stdout.strip()
+        _ok(f"Source cloned — version: {A['cyan']}{tag}{A['rst']}")
+        behind = subprocess.run(["git", "rev-list", "HEAD..@{u}", "--count"],
+                                capture_output=True, text=True, cwd=str(source)).stdout.strip()
         if behind and behind != "0":
-            print(f"  \033[33m! {behind} commit(s) behind upstream — consider updating.\033[0m")
+            _warn(f"{behind} commit(s) behind upstream — consider updating.")
         elif behind == "0":
-            print("  \033[32m✔ Up to date with upstream.\033[0m")
+            _ok("Up to date with upstream.")
     else:
-        print("  \033[33m! Source not found — not installed.\033[0m")
+        _warn("Source not found — not installed.")
 
     print()
     for binary in ["llama-cli", "llama", "main"]:
-        r = subprocess.run(["which", binary], capture_output=True, text=True)
-        if r.returncode == 0:
-            path = r.stdout.strip()
-            print(f"  \033[32m✔ Binary found: {path}\033[0m")
-            subprocess.run([path, "--version"], capture_output=False)
+        r2 = subprocess.run(["which", binary], capture_output=True, text=True)
+        if r2.returncode == 0:
+            _ok(f"Binary found: {A['cyan']}{r2.stdout.strip()}{A['rst']}")
+            subprocess.run([r2.stdout.strip(), "--version"])
             break
     else:
-        print("  \033[33m! llama-cli not found in PATH.\033[0m")
+        _warn("llama-cli not found in PATH.")
         bin_path = prefix / "bin"
         if str(bin_path) not in os.environ.get("PATH", ""):
-            print(f"  \033[33m  Hint: add {bin_path} to your PATH.\033[0m")
+            _warn(f"Hint: add {bin_path} to your PATH.")
 
 
 def _build_and_install(source: Path, prefix: Path) -> None:
     build_dir = source / "build"
-    nproc = os.cpu_count() or 4
+    nproc     = os.cpu_count() or 4
+    flags     = config["cmake_extra"].split()
 
-    header("Configure")
-    flags = config["cmake_extra"].split()
+    header("CONFIGURE")
     cmake_cmd = [
         "cmake", "-S", str(source), "-B", str(build_dir),
         "-DCMAKE_BUILD_TYPE=Release",
@@ -266,54 +265,90 @@ def _build_and_install(source: Path, prefix: Path) -> None:
         *flags,
     ]
     if shell(cmake_cmd) != 0:
-        print("\033[31m  Configure failed.\033[0m")
+        _err("Configure failed.")
         return
 
-    header(f"Build  ({nproc} threads)")
+    header(f"BUILD  //  {nproc} threads")
     if shell(["cmake", "--build", str(build_dir), "--config", "Release", "-j", str(nproc)]) != 0:
-        print("\033[31m  Build failed.\033[0m")
+        _err("Build failed.")
         return
 
-    header("Install")
+    header("INSTALL")
     if shell(["cmake", "--install", str(build_dir)]) != 0:
-        print("\033[31m  Install failed.\033[0m")
+        _err("Install failed.")
         return
 
-    print(f"\n  \033[32m✔ Done! Binaries installed to {prefix}/bin/\033[0m")
+    print()
+    _ok(f"Done!  Binaries installed to {A['cyan']}{prefix}/bin/{A['rst']}")
     bin_path = prefix / "bin"
     if str(bin_path) not in os.environ.get("PATH", ""):
-        print(f"\n  \033[33m! {bin_path} is not in PATH.\033[0m")
-        print("  Add to your shell config:")
-        print(f'    export PATH="{bin_path}:$PATH"')
+        _warn(f"{bin_path} is not in PATH.")
+        print(f"  Add to your shell config:")
+        print(f"    {A['yellow']}export PATH=\"{bin_path}:$PATH\"{A['rst']}")
 
 
-# ── TUI helpers ───────────────────────────────────────────────────────────────
-PALETTE = {
-    "surface":   "#1e1e2e",
-    "overlay":   "#313244",
-    "text":      "#cdd6f4",
-    "accent":    "#89b4fa",
-    "green":     "#a6e3a1",
-    "yellow":    "#f9e2af",
-    "red":       "#f38ba8",
-}
-
-
+# ── Cyberpunk TUI styles ───────────────────────────────────────────────────────
 def _apply_styles() -> None:
-    ptg.tim.alias("title",   f"bold {PALETTE['accent']}")
-    ptg.tim.alias("label",   PALETTE["text"])
-    ptg.tim.alias("dim",     PALETTE["overlay"])
-    ptg.tim.alias("ok",      PALETTE["green"])
-    ptg.tim.alias("warn",    PALETTE["yellow"])
-    ptg.tim.alias("err",     PALETTE["red"])
+    bg, bg2   = CP["bg"], CP["bg2"]
+    cyan, pink = CP["cyan"], CP["pink"]
+    yellow    = CP["yellow"]
+    dim       = CP["dim"]
+
+    # Window border: neon cyan unfocused, hot pink when focused
+    ptg.Window.set_style("border",
+        ptg.MarkupFormatter(f"[{cyan}]{{item}}"))
+    ptg.Window.set_style("corner",
+        ptg.MarkupFormatter(f"[{cyan}]{{item}}"))
+    ptg.Window.set_style("border_focused",
+        ptg.MarkupFormatter(f"[bold {pink}]{{item}}"))
+    ptg.Window.set_style("corner_focused",
+        ptg.MarkupFormatter(f"[bold {pink}]{{item}}"))
+    ptg.Window.set_style("border_blurred",
+        ptg.MarkupFormatter(f"[{dim}]{{item}}"))
+    ptg.Window.set_style("corner_blurred",
+        ptg.MarkupFormatter(f"[{dim}]{{item}}"))
+
+    # Buttons: dark bg + cyan text; pink bg + dark text when highlighted
+    ptg.Button.set_style("label",
+        ptg.MarkupFormatter(f"[@{bg2} bold {cyan}]{{item}}"))
+    ptg.Button.set_style("highlight",
+        ptg.MarkupFormatter(f"[@{pink} bold {bg}]{{item}}"))
+
+    # InputField: dark bg, yellow prompt, cyan text
+    ptg.InputField.set_style("value",
+        ptg.MarkupFormatter(f"[@{bg} {yellow}]{{item}}"))
+    ptg.InputField.set_style("prompt",
+        ptg.MarkupFormatter(f"[@{bg} {cyan}]{{item}}"))
+    ptg.InputField.set_style("cursor",
+        ptg.MarkupFormatter(f"[@{pink} {bg}]{{item}}"))
+
+    # TIM aliases used in markup strings
+    ptg.tim.alias("cp.title",  f"bold {pink}")
+    ptg.tim.alias("cp.label",  CP["white"])
+    ptg.tim.alias("cp.cyan",   cyan)
+    ptg.tim.alias("cp.yellow", yellow)
+    ptg.tim.alias("cp.green",  CP["green"])
+    ptg.tim.alias("cp.dim",    dim)
+    ptg.tim.alias("cp.err",    CP["red"])
+
+
+# ── TUI widgets ────────────────────────────────────────────────────────────────
+def _run_action(manager: ptg.WindowManager, fn) -> None:
+    ptg.unset_alt_buffer()
+    ptg.show_cursor()
+    try:
+        fn()
+    except KeyboardInterrupt:
+        print(f"\n  {A['dim']}[interrupted]{A['rst']}")
+    print()
+    input(f"  {A['pink']}// press Enter to jack back in //{A['rst']}  ")
+    ptg.set_alt_buffer()
+    ptg.hide_cursor()
+    manager.draw()
 
 
 def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> None:
-    """Simple yes/no confirmation dialog."""
-
-    def _close(_):
-        manager -= win
-
+    def _close(_):   manager -= win
     def _confirm(_):
         manager -= win
         if on_yes:
@@ -321,37 +356,34 @@ def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> No
 
     win = (
         ptg.Window(
-            ptg.Label(f"[title]{title}"),
+            ptg.Label(f"[cp.title]{title}"),
             ptg.Label(""),
-            ptg.Label(f"[label]{body}"),
+            ptg.Label(f"[cp.label]{body}"),
             ptg.Label(""),
             ptg.Splitter(
-                ptg.Button("Yes", onclick=_confirm),
-                ptg.Button("No",  onclick=_close),
+                ptg.Button("  YES  ", onclick=_confirm),
+                ptg.Button("  NO   ", onclick=_close),
             ),
             box=ptg.boxes.DOUBLE,
             width=52,
         )
-        .set_title(f"[title] Confirm ")
+        .set_title(f"[cp.title] ▓▓ CONFIRM ▓▓ ")
         .center()
     )
     manager += win
 
 
 def _alert(manager: ptg.WindowManager, title: str, lines: list[str]) -> None:
-    """Simple info alert."""
+    def _close(_): manager -= win
 
-    def _close(_):
-        manager -= win
-
-    widgets: list = [ptg.Label(f"[title]{title}"), ptg.Label("")]
+    widgets: list = [ptg.Label(f"[cp.title]{title}"), ptg.Label("")]
     for line in lines:
-        widgets.append(ptg.Label(f"[label]{line}"))
-    widgets += [ptg.Label(""), ptg.Button("OK", onclick=_close)]
+        widgets.append(ptg.Label(f"[cp.label]{line}"))
+    widgets += [ptg.Label(""), ptg.Button("  OK  ", onclick=_close)]
 
     win = (
-        ptg.Window(*widgets, box=ptg.boxes.DOUBLE, width=56)
-        .set_title(f"[title] Info ")
+        ptg.Window(*widgets, box=ptg.boxes.DOUBLE, width=58)
+        .set_title(f"[cp.title] ▓▓ ALERT ▓▓ ")
         .center()
     )
     manager += win
@@ -363,31 +395,28 @@ def _input_form(
     fields: list[tuple[str, str]],
     on_submit,
 ) -> None:
-    """Multi-field input form. fields = [(label, default), ...]"""
-
-    inputs = [ptg.InputField(default, prompt=f"[label]{label}: ") for label, default in fields]
+    inputs = [ptg.InputField(default, prompt=f"[cp.cyan]{label}: ") for label, default in fields]
 
     def _submit(_):
-        values = [inp.value for inp in inputs]
         manager -= win
-        on_submit(values)
+        on_submit([inp.value for inp in inputs])
 
     def _cancel(_):
         manager -= win
 
-    widgets: list = [ptg.Label(f"[title]{title}"), ptg.Label("")]
+    widgets: list = [ptg.Label(f"[cp.title]{title}"), ptg.Label("")]
     widgets.extend(inputs)
     widgets += [
         ptg.Label(""),
         ptg.Splitter(
-            ptg.Button("Confirm", onclick=_submit),
-            ptg.Button("Cancel",  onclick=_cancel),
+            ptg.Button("  CONFIRM  ", onclick=_submit),
+            ptg.Button("  CANCEL   ", onclick=_cancel),
         ),
     ]
 
     win = (
-        ptg.Window(*widgets, box=ptg.boxes.DOUBLE, width=62)
-        .set_title(f"[title] {title} ")
+        ptg.Window(*widgets, box=ptg.boxes.DOUBLE, width=64)
+        .set_title(f"[cp.title] ▓▓ {title.upper()} ▓▓ ")
         .center()
     )
     manager += win
@@ -404,43 +433,29 @@ def _backend_picker(manager: ptg.WindowManager, on_select) -> None:
             on_select()
         return handler
 
-    def _cancel(_):
-        manager -= win
+    def _cancel(_): manager -= win
 
-    buttons = [ptg.Button(label, onclick=_pick(i)) for i, (label, _) in enumerate(backends)]
-    widgets = [ptg.Label("[title]Select compute backend"), ptg.Label("")] + buttons + [
+    buttons  = [ptg.Button(f"  {label}  ", onclick=_pick(i)) for i, (label, _) in enumerate(backends)]
+    widgets  = [
+        ptg.Label("[cp.title]Select compute backend"),
+        ptg.Label(f"[cp.dim]detected on this system"),
         ptg.Label(""),
-        ptg.Button("Cancel", onclick=_cancel),
+        *buttons,
+        ptg.Label(""),
+        ptg.Button("  CANCEL  ", onclick=_cancel),
     ]
 
     win = (
-        ptg.Window(*widgets, box=ptg.boxes.DOUBLE, width=52)
-        .set_title("[title] Backend ")
+        ptg.Window(*widgets, box=ptg.boxes.DOUBLE, width=54)
+        .set_title("[cp.title] ▓▓ BACKEND ▓▓ ")
         .center()
     )
     manager += win
 
 
-# ── Wrapped actions (enter/exit alt-buffer around real terminal output) ───────
-def _run_action(manager: ptg.WindowManager, fn) -> None:
-    """Exit TUI, run fn, wait for Enter, re-draw."""
-    ptg.unset_alt_buffer()
-    ptg.show_cursor()
-    try:
-        fn()
-    except KeyboardInterrupt:
-        print("\n  [interrupted]")
-    print()
-    input("  Press Enter to return to menu…")
-    ptg.set_alt_buffer()
-    ptg.hide_cursor()
-    manager.draw()
-
-
 # ── Main TUI ──────────────────────────────────────────────────────────────────
 def build_ui(manager: ptg.WindowManager) -> None:
 
-    # ── Install flow ──────────────────────────────────────────────────────
     def start_install(_):
         def _after_paths(values):
             config["source_dir"], config["install_dir"] = values
@@ -448,32 +463,25 @@ def build_ui(manager: ptg.WindowManager) -> None:
             _backend_picker(manager, on_select=lambda: _run_action(manager, action_install))
 
         _input_form(
-            manager,
-            "Install paths",
+            manager, "Install paths",
             [("Source directory", config["source_dir"]),
              ("Install prefix",   config["install_dir"])],
             on_submit=_after_paths,
         )
 
-    # ── Update flow ───────────────────────────────────────────────────────
     def start_update(_):
         source = Path(config["source_dir"])
         if not (source / ".git").exists():
-            _alert(manager, "Not installed",
-                   [f"No source found at {source}.", "Run Install first."])
+            _alert(manager, "NOT INSTALLED",
+                   [f"No source found at:", str(source), "", "Run Install first."])
             return
-        _modal(
-            manager,
-            "Update llama.cpp",
-            "Pull latest commits and rebuild?",
-            on_yes=lambda: _run_action(manager, action_update),
-        )
+        _modal(manager, "UPDATE  //  llama.cpp",
+               "Pull latest commits and rebuild?",
+               on_yes=lambda: _run_action(manager, action_update))
 
-    # ── Status ────────────────────────────────────────────────────────────
     def show_status(_):
         _run_action(manager, action_status)
 
-    # ── Settings ──────────────────────────────────────────────────────────
     def open_settings(_):
         def _after_paths(values):
             config["source_dir"], config["install_dir"] = values
@@ -481,50 +489,43 @@ def build_ui(manager: ptg.WindowManager) -> None:
             _backend_picker(manager, on_select=lambda: None)
 
         _input_form(
-            manager,
-            "Settings",
+            manager, "Settings",
             [("Source directory", config["source_dir"]),
              ("Install prefix",   config["install_dir"])],
             on_submit=_after_paths,
         )
 
-    # ── Uninstall ─────────────────────────────────────────────────────────
     def start_uninstall(_):
-        _modal(
-            manager,
-            "Uninstall llama.cpp",
-            "Remove installed files and source?",
-            on_yes=lambda: _run_action(manager, action_uninstall),
-        )
+        _modal(manager, "UNINSTALL  //  llama.cpp",
+               "Remove installed files and source?",
+               on_yes=lambda: _run_action(manager, action_uninstall))
 
-    # ── Main window ───────────────────────────────────────────────────────
     main = (
         ptg.Window(
-            ptg.Label("[title]  🦙 namakera  "),
-            ptg.Label("[dim]  llama.cpp build manager  "),
+            ptg.Label(f"[bold {CP['pink']}]  ▓ NAMAKERA ▓  "),
+            ptg.Label(f"[{CP['dim']}]  llama.cpp build manager  "),
             ptg.Label(""),
-            ptg.Button("  Install   (clone → build → install)", onclick=start_install),
-            ptg.Button("  Update    (pull → rebuild)",           onclick=start_update),
-            ptg.Button("  Status",                               onclick=show_status),
-            ptg.Button("  Settings  (paths / backend)",          onclick=open_settings),
-            ptg.Button("  Uninstall",                            onclick=start_uninstall),
+            ptg.Button("  INSTALL    clone → build → install  ", onclick=start_install),
+            ptg.Button("  UPDATE     pull  → rebuild           ", onclick=start_update),
+            ptg.Button("  STATUS                               ", onclick=show_status),
+            ptg.Button("  SETTINGS   paths / backend           ", onclick=open_settings),
+            ptg.Button("  UNINSTALL                            ", onclick=start_uninstall),
             ptg.Label(""),
-            ptg.Button("  Quit", onclick=lambda _: manager.stop()),
+            ptg.Button("  QUIT                                 ", onclick=lambda _: manager.stop()),
             box=ptg.boxes.DOUBLE,
             width=54,
         )
-        .set_title("[title] namakera ")
+        .set_title(f"[bold {CP['cyan']}] ▓▓ NAMAKERA ▓▓ ")
         .center()
     )
 
     manager += main
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Entry ─────────────────────────────────────────────────────────────────────
 def main() -> None:
     load_config()
     _apply_styles()
-
     with ptg.WindowManager() as manager:
         build_ui(manager)
 
