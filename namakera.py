@@ -213,6 +213,53 @@ def action_uninstall() -> None:
     _ok("Uninstall complete.")
 
 
+LLAMA_BINARY_NAMES = [
+    "llama-cli", "llama-run", "llama", "main",
+    "llama-server", "llama-bench", "llama-embedding",
+]
+
+# Common locations to search when binaries aren't in PATH
+LLAMA_SEARCH_DIRS = [
+    Path.home() / ".local" / "bin",
+    Path("/usr/local/bin"),
+    Path("/usr/bin"),
+    Path("/opt/llama.cpp/bin"),
+]
+
+
+def find_llama_binary() -> Path | None:
+    """Search PATH first, then common build/install dirs, then user's source build dir."""
+    # 1. PATH
+    for name in LLAMA_BINARY_NAMES:
+        r = subprocess.run(["which", name], capture_output=True, text=True)
+        if r.returncode == 0:
+            return Path(r.stdout.strip())
+
+    # 2. Known install dirs
+    for d in LLAMA_SEARCH_DIRS:
+        for name in LLAMA_BINARY_NAMES:
+            p = d / name
+            if p.exists():
+                return p
+
+    # 3. Build dir inside the configured source
+    build_bin = Path(config["source_dir"]) / "build" / "bin"
+    for name in LLAMA_BINARY_NAMES:
+        p = build_bin / name
+        if p.exists():
+            return p
+
+    # 4. Glob for any llama-* under common workspace dirs
+    for search_root in [Path.home() / "workspace", Path.home() / "src", Path.home()]:
+        if not search_root.exists():
+            continue
+        for p in sorted(search_root.rglob("llama-cli")) + sorted(search_root.rglob("llama-run")):
+            if p.is_file() and os.access(p, os.X_OK):
+                return p
+
+    return None
+
+
 def action_status() -> None:
     header("STATUS")
     source = Path(config["source_dir"])
@@ -235,17 +282,19 @@ def action_status() -> None:
         elif behind == "0":
             _ok("Up to date with upstream.")
     else:
-        _warn("Source not found — not installed.")
+        _warn(f"No git source at {source} — may be a pre-existing or package install.")
 
     print()
-    for binary in ["llama-cli", "llama", "main"]:
-        r2 = subprocess.run(["which", binary], capture_output=True, text=True)
-        if r2.returncode == 0:
-            _ok(f"Binary found: {A['cyan']}{r2.stdout.strip()}{A['rst']}")
-            subprocess.run([r2.stdout.strip(), "--version"])
-            break
+    binary = find_llama_binary()
+    if binary:
+        in_path = _which(binary.name)
+        loc_note = "" if in_path else f"{A['yellow']} (not in PATH){A['rst']}"
+        _ok(f"Binary found: {A['cyan']}{binary}{A['rst']}{loc_note}")
+        subprocess.run([str(binary), "--version"], capture_output=False)
+        if not in_path:
+            _warn(f"Add {binary.parent} to your PATH to use it from the terminal.")
     else:
-        _warn("llama-cli not found in PATH.")
+        _warn("No llama binary found.")
         bin_path = prefix / "bin"
         if str(bin_path) not in os.environ.get("PATH", ""):
             _warn(f"Hint: add {bin_path} to your PATH.")
