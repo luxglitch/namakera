@@ -471,10 +471,8 @@ def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> No
             ptg.Label(""),
             ptg.Label(f"[cp.label]{body}"),
             ptg.Label(""),
-            ptg.Splitter(
-                ptg.Button("  YES  ", onclick=_confirm),
-                ptg.Button("  NO   ", onclick=_close),
-            ),
+            ptg.Button("  YES  ", onclick=_confirm),
+            ptg.Button("  NO   ", onclick=_close),
             box=ptg.boxes.DOUBLE,
             width=52,
         )
@@ -519,10 +517,8 @@ def _input_form(
     widgets.extend(inputs)
     widgets += [
         ptg.Label(""),
-        ptg.Splitter(
-            ptg.Button("  CONFIRM  ", onclick=_submit),
-            ptg.Button("  CANCEL   ", onclick=_cancel),
-        ),
+        ptg.Button("  CONFIRM  ", onclick=_submit),
+        ptg.Button("  CANCEL   ", onclick=_cancel),
     ]
 
     win = (
