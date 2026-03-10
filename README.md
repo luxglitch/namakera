@@ -12,7 +12,8 @@
 **Build, install, and update [llama.cpp](https://github.com/ggerganov/llama.cpp) from source — no flags, just menus.**
 
 ![Platform](https://img.shields.io/badge/platform-linux-blue?style=flat-square)
-![Shell](https://img.shields.io/badge/shell-bash-89e051?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)
+![pytermgui](https://img.shields.io/badge/TUI-pytermgui-blueviolet?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
 </div>
@@ -53,11 +54,12 @@ A single bash script that handles the full lifecycle of llama.cpp — clone, con
 ```bash
 git clone https://github.com/luxglitch/namakera.git
 cd namakera
-chmod +x llamacpp-manager.sh
-./llamacpp-manager.sh
+python3 -m venv .venv
+.venv/bin/pip install pytermgui
+.venv/bin/python3 namakera.py
 ```
 
-That's it. Pick **1) Install** and follow the prompts.
+That's it. Pick **Install** and follow the prompts.
 
 ---
 
@@ -174,20 +176,20 @@ sudo apt install libopenblas-dev pkg-config
 
 ### First install
 
-Run the script and pick **1) Install**. It will ask:
+Run `namakera.py` and click **Install**. A form will ask for:
 
 - **Source directory** — where to clone llama.cpp *(default: `~/src/llama.cpp`)*
 - **Install prefix** — where to put the binaries *(default: `~/.local`)*
 - **Compute backend** — pick from whatever's detected on your system
 
-Then it clones, configures, builds, and installs. Go grab a coffee ☕ — the first build takes a few minutes.
+The TUI closes, shows live build output in your terminal, then returns to the menu when done. Go grab a coffee ☕ — the first build takes a few minutes.
 
 ### Updating
 
-Pick **2) Update**. The script:
-1. Fetches upstream and shows current vs remote version
-2. Asks before pulling and rebuilding
-3. Optionally lets you switch to a different backend
+Click **Update**. It:
+1. Confirms before doing anything
+2. Fetches upstream and shows current vs remote version
+3. Pulls and rebuilds
 
 ### PATH setup
 
@@ -219,20 +221,20 @@ Then open a new terminal or reload your shell.
 
 ## ⚙️ Config file
 
-Your choices are saved automatically after each install or reconfigure:
+Your choices are saved automatically after each install or settings change:
 
 ```
-~/.config/llamacpp-manager.conf
+~/.config/namakera.conf
 ```
 
 ```bash
-# llama.cpp manager config — auto-generated
-INSTALL_DIR="/home/you/.local"
-SOURCE_DIR="/home/you/src/llama.cpp"
-CMAKE_EXTRA="-DGGML_NATIVE=ON -DGGML_CUDA=ON"
+# namakera config — auto-generated
+source_dir="/home/you/src/llama.cpp"
+install_dir="/home/you/.local"
+cmake_extra="-DGGML_NATIVE=ON -DGGML_CUDA=ON"
 ```
 
-You can edit this by hand or use menu option **4) Change paths / backend flags** to update it interactively.
+You can edit this by hand or use the **Settings** menu to update it interactively.
 
 ---
 
