@@ -483,6 +483,8 @@ def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> No
     )
     manager += win
     win.select(1)  # default to NO
+    win.bind(ptg.keys.LEFT,  lambda *_: win.select(0))
+    win.bind(ptg.keys.RIGHT, lambda *_: win.select(1))
 
 
 def _alert(manager: ptg.WindowManager, title: str, lines: list[str]) -> None:
@@ -531,8 +533,17 @@ def _input_form(
         .set_title(f"[cp.title] ▓▓ {title.upper()} ▓▓ ")
         .center()
     )
+    confirm_idx = len(inputs)
+    cancel_idx  = len(inputs) + 1
     manager += win
-    win.select(len(inputs) + 1)  # default to CANCEL (skip inputs + splitter)
+    win.select(cancel_idx)  # default to CANCEL
+
+    def _lr(key, *_):
+        if win.selected_index == confirm_idx or win.selected_index == cancel_idx:
+            win.select(confirm_idx if key == ptg.keys.LEFT else cancel_idx)
+
+    win.bind(ptg.keys.LEFT,  lambda *a: _lr(ptg.keys.LEFT,  *a))
+    win.bind(ptg.keys.RIGHT, lambda *a: _lr(ptg.keys.RIGHT, *a))
 
 
 def _backend_picker(manager: ptg.WindowManager, on_select) -> None:
