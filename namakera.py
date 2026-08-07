@@ -121,11 +121,45 @@ def _find_hipcc() -> Path | None:
     return None
 
 
+def _has_gpu_hardware() -> bool:
+    """Return True if a discrete GPU is present on the system."""
+    try:
+        r = subprocess.run(["lspci"], capture_output=True, text=True)
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                low = line.lower()
+                if any(k in low for k in ("nvidia", "amd", "radeon", "geforce", "firepro")):
+                    if any(k in low for k in ("vga", "3d", "display")):
+                        return True
+    except FileNotFoundError:
+        pass
+    return False
+
+
+def _cuda_arch() -> str | None:
+    """Return the CUDA compute capability (e.g. '86') via nvidia-smi, or None."""
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            cap = r.stdout.strip().split("\n")[0].strip().replace(".", "")
+            if cap.isdigit():
+                return cap
+    except FileNotFoundError:
+        pass
+    return None
+
+
 def detect_backends() -> list[tuple[str, str]]:
     backends = [("CPU only  (no acceleration)", "-DGGML_NATIVE=ON")]
     nvcc = _find_nvcc()
     if nvcc:
-        backends.append((f"CUDA      Nvidia GPU  [{nvcc}]", f"-DGGML_NATIVE=ON -DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER={nvcc}"))
+        arch = _cuda_arch()
+        arch_flag = f" -DCMAKE_CUDA_ARCHITECTURES={arch}" if arch else ""
+        arch_label = f"  [sm_{arch}]" if arch else ""
+        backends.append((f"CUDA      Nvidia GPU  [{nvcc}]{arch_label}", f"-DGGML_NATIVE=ON -DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER={nvcc}{arch_flag}"))
     hipcc = _find_hipcc()
     if hipcc:
         backends.append(("HIP       AMD ROCm GPU", "-DGGML_NATIVE=ON -DGGML_HIP=ON"))
@@ -429,6 +463,24 @@ def _build_and_install(source: Path, prefix: Path) -> None:
         _err("Install failed.")
         return
 
+    lib_path = prefix / "lib"
+    conf_file = Path("/etc/ld.so.conf.d/llama-local.conf")
+    header("LDCONFIG")
+    print(f"  {A['cyan']}Registering {lib_path} with ldconfig…{A['rst']}")
+    r = subprocess.run(
+        ["sudo", "tee", str(conf_file)],
+        input=str(lib_path) + "\n",
+        text=True,
+        capture_output=True,
+    )
+    if r.returncode != 0:
+        _warn(f"Could not write {conf_file} (sudo tee failed) — skipping ldconfig.")
+    else:
+        if shell(["sudo", "ldconfig"]) != 0:
+            _warn("ldconfig failed — shared libs may not be found at runtime.")
+        else:
+            _ok(f"ldconfig updated ({lib_path})")
+
     print()
     _ok(f"Done!  Binaries installed to {A['cyan']}{prefix}/bin/{A['rst']}")
     bin_path = prefix / "bin"
@@ -484,18 +536,9 @@ def _apply_styles() -> None:
 
 
 # ── TUI widgets ────────────────────────────────────────────────────────────────
-def _run_action(manager: ptg.WindowManager, fn) -> None:
-    ptg.unset_alt_buffer()
-    ptg.show_cursor()
-    try:
-        fn()
-    except KeyboardInterrupt:
-        print(f"\n  {A['dim']}[interrupted]{A['rst']}")
-    print()
-    input(f"  {A['pink']}// press Enter to jack back in //{A['rst']}  ")
-    ptg.set_alt_buffer()
-    ptg.hide_cursor()
-    manager.compositor.redraw()
+def _run_action(manager: ptg.WindowManager, fn, pending: dict) -> None:
+    pending["fn"] = fn
+    manager.stop()
 
 
 def _modal(manager: ptg.WindowManager, title: str, body: str, on_yes=None) -> None:
@@ -588,6 +631,7 @@ def _input_form(
 
 def _backend_picker(manager: ptg.WindowManager, on_select) -> None:
     backends = detect_backends()
+    gpu_only_cpu = len(backends) == 1 and _has_gpu_hardware()
 
     def _pick(idx: int):
         def handler(_):
@@ -600,10 +644,17 @@ def _backend_picker(manager: ptg.WindowManager, on_select) -> None:
     def _cancel(_): manager.remove(win)
 
     buttons  = [ptg.Button(f"  {label}  ", onclick=_pick(i)) for i, (label, _) in enumerate(backends)]
+    warning  = [
+        ptg.Label("[cp.err]⚠  GPU detected but no toolkit found!"),
+        ptg.Label("[cp.dim]Install cuda / rocm to enable GPU backends."),
+        ptg.Label("[cp.dim]See README § 'System — Optional (GPU backends)'"),
+        ptg.Label(""),
+    ] if gpu_only_cpu else []
     widgets  = [
         ptg.Label("[cp.title]Select compute backend"),
         ptg.Label(f"[cp.dim]detected on this system"),
         ptg.Label(""),
+        *warning,
         *buttons,
         ptg.Label(""),
         ptg.Button("  CANCEL  ", onclick=_cancel),
@@ -618,13 +669,13 @@ def _backend_picker(manager: ptg.WindowManager, on_select) -> None:
 
 
 # ── Main TUI ──────────────────────────────────────────────────────────────────
-def build_ui(manager: ptg.WindowManager) -> None:
+def build_ui(manager: ptg.WindowManager, pending: dict) -> None:
 
     def start_install(_):
         def _after_paths(values):
             config["source_dir"], config["install_dir"] = values
             save_config()
-            _backend_picker(manager, on_select=lambda: _run_action(manager, action_install))
+            _backend_picker(manager, on_select=lambda: _run_action(manager, action_install, pending))
 
         _input_form(
             manager, "Install paths",
@@ -641,10 +692,10 @@ def build_ui(manager: ptg.WindowManager) -> None:
             return
         _modal(manager, "UPDATE  //  llama.cpp",
                "Pull latest commits and rebuild?",
-               on_yes=lambda: _run_action(manager, action_update))
+               on_yes=lambda: _run_action(manager, action_update, pending))
 
     def show_status(_):
-        _run_action(manager, action_status)
+        _run_action(manager, action_status, pending)
 
     def open_settings(_):
         def _after_paths(values):
@@ -662,7 +713,7 @@ def build_ui(manager: ptg.WindowManager) -> None:
     def start_uninstall(_):
         _modal(manager, "UNINSTALL  //  llama.cpp",
                "Remove installed files and source?",
-               on_yes=lambda: _run_action(manager, action_uninstall))
+               on_yes=lambda: _run_action(manager, action_uninstall, pending))
 
     main = (
         ptg.Window(
@@ -690,8 +741,19 @@ def build_ui(manager: ptg.WindowManager) -> None:
 def main() -> None:
     load_config()
     _apply_styles()
-    with ptg.WindowManager() as manager:
-        build_ui(manager)
+    while True:
+        pending: dict = {"fn": None}
+        with ptg.WindowManager() as manager:
+            build_ui(manager, pending)
+        if pending["fn"] is None:
+            break
+        try:
+            pending["fn"]()
+        except KeyboardInterrupt:
+            print(f"\n  {A['dim']}[interrupted]{A['rst']}")
+        print()
+        input(f"  {A['pink']}// press Enter to jack back in //{A['rst']}  ")
+        _apply_styles()
 
 
 if __name__ == "__main__":
